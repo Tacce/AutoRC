@@ -132,7 +132,8 @@ class Sequence:
             trajectory_points_past = trajectory_points_past @ rotation_matrix_180.T
             point_cloud.points = o3d.utility.Vector3dVector(np.asarray(point_cloud.points) @ rotation_matrix_180.T)
 
-        return point_cloud, trajectory_points_future, trajectory_points_past
+        return (point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame.img,
+                closest_depth_frame.img)
 
     def display_sample(self, point_cloud, trajectory_points_future, trajectory_points_past):
         line_set_f = o3d.geometry.LineSet()
@@ -157,17 +158,3 @@ class Sequence:
         # Visualizza le nuvole di punti trasformate e la traiettoria
         o3d.visualization.draw_geometries([point_cloud] + [line_set_f] + [line_set_p] + [coordinate_frame])
 
-
-rosbag_path = sys.argv[1]
-# rosbag_path = "rosbag2_2024_05_31-16_52_01\\"
-
-# Istante da prendere in considerazione
-t = 10
-# Numero di punti della traiettoria passata e futura che si vogliono visualizzare
-delta_f = 50
-delta_p = 20
-# Da impostare su True per le sequenze con la camera invertita
-is_rotated = True
-
-s = Sequence(rosbag_path, is_rotated)
-s.display_sample(*s.get_sample(min(t, s.lenght-1), delta_f, delta_p))
