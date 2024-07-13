@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 import open3d as o3d
 import numpy as np
@@ -11,6 +10,9 @@ alignment_rotation = R.from_euler('xyz', [np.pi / 2, np.pi, np.pi / 2], degrees=
 rotation_matrix_180 = np.array([[-1, 0, 0],
                                 [0, -1, 0],
                                 [0, 0, 1]])
+
+angle_threshold = np.pi / 16
+max_slope = 6
 
 
 class Image:
@@ -132,21 +134,33 @@ class Sequence:
             trajectory_points_past = trajectory_points_past @ rotation_matrix_180.T
             point_cloud.points = o3d.utility.Vector3dVector(np.asarray(point_cloud.points) @ rotation_matrix_180.T)
 
-        return (point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame.img,
-                closest_depth_frame.img)
+        sample = Sample(point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame.img,
+                        closest_depth_frame.img)
 
-    def display_sample(self, point_cloud, trajectory_points_future, trajectory_points_past):
+        return sample
+
+
+class Sample:
+
+    def __init__(self, point_cloud, trajectory_points_future, trajectory_points_past, rgb_frame, depth_frame):
+        self.point_cloud = point_cloud
+        self.future_trajectory = trajectory_points_future
+        self.past_trajectory = trajectory_points_past
+        self.rgb_frame = rgb_frame
+        self.depth_frame = depth_frame
+
+    def display(self):
         line_set_f = o3d.geometry.LineSet()
-        line_set_f.points = o3d.utility.Vector3dVector(trajectory_points_future)
-        lines = [[i, i + 1] for i in range(len(trajectory_points_future) - 1)]
+        line_set_f.points = o3d.utility.Vector3dVector(self.future_trajectory)
+        lines = [[i, i + 1] for i in range(len(self.future_trajectory) - 1)]
         line_set_f.lines = o3d.utility.Vector2iVector(lines)
 
         colors = [[1, 0, 0] for _ in range(len(lines))]
         line_set_f.colors = o3d.utility.Vector3dVector(colors)
 
         line_set_p = o3d.geometry.LineSet()
-        line_set_p.points = o3d.utility.Vector3dVector(trajectory_points_past)
-        lines = [[i, i + 1] for i in range(len(trajectory_points_past) - 1)]
+        line_set_p.points = o3d.utility.Vector3dVector(self.past_trajectory)
+        lines = [[i, i + 1] for i in range(len(self.past_trajectory) - 1)]
         line_set_p.lines = o3d.utility.Vector2iVector(lines)
 
         colors = [[0, 1, 0] for _ in range(len(lines))]
@@ -156,5 +170,59 @@ class Sequence:
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
 
         # Visualizza le nuvole di punti trasformate e la traiettoria
-        o3d.visualization.draw_geometries([point_cloud] + [line_set_f] + [line_set_p] + [coordinate_frame])
+        o3d.visualization.draw_geometries([self.point_cloud] + [line_set_f] + [line_set_p] + [coordinate_frame])
 
+    def calculate_trajectory_length(self):
+        return np.sum(np.linalg.norm(self.future_trajectory[1:] - self.future_trajectory[:-1], axis=1))
+
+    def classify_trajectory(self):
+        # Considero solo la traiettoria sul piano xz
+        points = self.future_trajectory[:, [0, 2]]
+
+        diffs = np.diff(points, axis=0)
+        angles = np.arctan2(diffs[:, 1], diffs[:, 0])
+        angle_diffs = np.diff(angles)
+
+        # Normalizza gli angoli in [-pi, pi]
+        angle_diffs = (angle_diffs + np.pi) % (2 * np.pi) - np.pi
+
+        total_angle = np.sum(angle_diffs)
+
+        slope = (points[-1, 1] - points[0, 1]) / (points[-1, 0] - points[0, 0]) if points[-1, 0] != points[
+            0, 0] else np.inf
+
+        if abs(slope) > max_slope:
+            return 'straight'
+
+        if np.abs(total_angle) < angle_threshold:
+            if slope > 2:
+                return 'straight'
+            elif slope > 0:
+                return 'right'
+            else:
+                return 'left'
+        elif total_angle > 0:
+            return 'left'
+        else:
+            return 'right'
+
+    def calculate_covered_area_percentage(self):
+        height, width = self.rgb_frame.shape[:2]
+        total_pixels = width * height
+        points = np.asarray(self.point_cloud.points)
+        covered_pixels = set()
+
+        for point in points:
+            x, y, z = point
+            if z > 0:  # Consider only points with positive depth
+                # Project the 3D point to the 2D image plane (assuming pinhole camera model)
+                u_proj = int((x / z) * width / 2 + width / 2)
+                v_proj = int((y / z) * height / 2 + height / 2)
+                # Check if the projected points are within the image boundaries
+                if 0 <= u_proj < width and 0 <= v_proj < height:
+                    covered_pixels.add((u_proj, v_proj))
+
+        covered_area = len(covered_pixels)
+        covered_area_percentage = (covered_area / total_pixels) * 100
+
+        return covered_area_percentage
