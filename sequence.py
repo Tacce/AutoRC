@@ -144,23 +144,23 @@ class Sample:
 
     def __init__(self, point_cloud, trajectory_points_future, trajectory_points_past, rgb_frame, depth_frame):
         self.point_cloud = point_cloud
-        self.future_trajectory = trajectory_points_future
-        self.past_trajectory = trajectory_points_past
+        self.future_trajectory = Trajectory(trajectory_points_future)
+        self.past_trajectory = Trajectory(trajectory_points_past)
         self.rgb_frame = rgb_frame
         self.depth_frame = depth_frame
 
     def display(self):
         line_set_f = o3d.geometry.LineSet()
-        line_set_f.points = o3d.utility.Vector3dVector(self.future_trajectory)
-        lines = [[i, i + 1] for i in range(len(self.future_trajectory) - 1)]
+        line_set_f.points = o3d.utility.Vector3dVector(self.future_trajectory.points)
+        lines = [[i, i + 1] for i in range(len(self.future_trajectory.points) - 1)]
         line_set_f.lines = o3d.utility.Vector2iVector(lines)
 
         colors = [[1, 0, 0] for _ in range(len(lines))]
         line_set_f.colors = o3d.utility.Vector3dVector(colors)
 
         line_set_p = o3d.geometry.LineSet()
-        line_set_p.points = o3d.utility.Vector3dVector(self.past_trajectory)
-        lines = [[i, i + 1] for i in range(len(self.past_trajectory) - 1)]
+        line_set_p.points = o3d.utility.Vector3dVector(self.past_trajectory.points)
+        lines = [[i, i + 1] for i in range(len(self.past_trajectory.points) - 1)]
         line_set_p.lines = o3d.utility.Vector2iVector(lines)
 
         colors = [[0, 1, 0] for _ in range(len(lines))]
@@ -172,12 +172,42 @@ class Sample:
         # Visualizza le nuvole di punti trasformate e la traiettoria
         o3d.visualization.draw_geometries([self.point_cloud] + [line_set_f] + [line_set_p] + [coordinate_frame])
 
-    def calculate_trajectory_length(self):
-        return np.sum(np.linalg.norm(self.future_trajectory[1:] - self.future_trajectory[:-1], axis=1))
+    def get_trajectory_length(self):
+        return self.future_trajectory.length
 
     def classify_trajectory(self):
+        return self.future_trajectory.classify()
+
+    def calculate_covered_area_percentage(self):
+        height, width = self.rgb_frame.shape[:2]
+        total_pixels = width * height
+        points = np.asarray(self.point_cloud.points)
+        covered_pixels = set()
+
+        for point in points:
+            x, y, z = point
+            if z > 0:  # Consider only points with positive depth
+                # Project the 3D point to the 2D image plane (assuming pinhole camera model)
+                u_proj = int((x / z) * width / 2 + width / 2)
+                v_proj = int((y / z) * height / 2 + height / 2)
+                # Check if the projected points are within the image boundaries
+                if 0 <= u_proj < width and 0 <= v_proj < height:
+                    covered_pixels.add((u_proj, v_proj))
+
+        covered_area = len(covered_pixels)
+        covered_area_percentage = (covered_area / total_pixels) * 100
+
+        return covered_area_percentage
+
+
+class Trajectory:
+    def __init__(self, points):
+        self.points = points
+        self.length = np.sum(np.linalg.norm(self.points[1:] - self.points[:-1], axis=1))
+
+    def classify(self):
         # Considero solo la traiettoria sul piano xz
-        points = self.future_trajectory[:, [0, 2]]
+        points = self.points[:, [0, 2]]
 
         diffs = np.diff(points, axis=0)
         angles = np.arctan2(diffs[:, 1], diffs[:, 0])
@@ -205,24 +235,3 @@ class Sample:
             return 'left'
         else:
             return 'right'
-
-    def calculate_covered_area_percentage(self):
-        height, width = self.rgb_frame.shape[:2]
-        total_pixels = width * height
-        points = np.asarray(self.point_cloud.points)
-        covered_pixels = set()
-
-        for point in points:
-            x, y, z = point
-            if z > 0:  # Consider only points with positive depth
-                # Project the 3D point to the 2D image plane (assuming pinhole camera model)
-                u_proj = int((x / z) * width / 2 + width / 2)
-                v_proj = int((y / z) * height / 2 + height / 2)
-                # Check if the projected points are within the image boundaries
-                if 0 <= u_proj < width and 0 <= v_proj < height:
-                    covered_pixels.add((u_proj, v_proj))
-
-        covered_area = len(covered_pixels)
-        covered_area_percentage = (covered_area / total_pixels) * 100
-
-        return covered_area_percentage
