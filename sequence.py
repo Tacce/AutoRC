@@ -22,7 +22,7 @@ class Image:
 
 
 class Sequence:
-    def __init__(self, rosbag_path, is_rotated=False):
+    def __init__(self, rosbag_path):
 
         with AnyReader([Path(rosbag_path)]) as reader:
             for connection, timestamp, rawdata in reader.messages():
@@ -58,14 +58,16 @@ class Sequence:
 
         self.lenght = len(self.trajectory_data)
 
-        self.is_rotated = is_rotated
-        '''
+        if 'ROTATED' in str(rosbag_path):
+            self.is_rotated = True
+        else:
+            self.is_rotated = False
+
         height, width = self.rgb_imgs[0].img.shape[:2]
         if height > 200 and width > 400:
-            self.is_rotated = False
+            self.low_quality = False
         else:
-            self.is_rotated = True
-        '''
+            self.low_quality = True
 
     def __create_point_cloud_from_depth(self, depth_image, rgb_image, intrinsic_matrix):
         height, width = depth_image.shape
@@ -108,6 +110,9 @@ class Sequence:
     def get_sample(self, t, delta_f, delta_p):
         main_frame = self.trajectory_data[t]
 
+        delta_f *= 1000000000
+        delta_p *= 1000000000
+
         orientation = main_frame['orientation']
         timestamp = main_frame['timestamp']
 
@@ -122,11 +127,13 @@ class Sequence:
         point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame.img, closest_rgb_frame.img,
                                                            self.intrinsic_matrix)
 
-        trajectory_points_future = np.array([data['position'] for data in self.trajectory_data[t:t + delta_f]])
+        trajectory_points_future = np.array([data['position'] for data in self.trajectory_data[t:]
+                                             if data['timestamp'] <= main_frame['timestamp'] + delta_f])
         trajectory_points_future = self.__transform_trajectory(trajectory_points_future, rotation)
 
         trajectory_points_past = np.array(
-            [data['position'] for data in self.trajectory_data[max(0, t - delta_p):t + 1]])[::-1]
+            [data['position'] for data in self.trajectory_data[0: t + 1]
+             if data['timestamp'] >= main_frame['timestamp'] - delta_p])[::-1]
         trajectory_points_past = self.__transform_trajectory(trajectory_points_past, rotation)
 
         if self.is_rotated:

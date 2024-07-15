@@ -16,9 +16,11 @@ def remove_outliers(samples):
 
     # Calcola la soglia superiore
     upper_threshold = Q3 + 1.5 * IQR
+    lower_threshold = Q1 - 1.5 * IQR
 
     # Filtra i sample che hanno una traiettoria che supera la soglia superiore
-    filtered_samples = [sample for sample, length in zip(samples, lengths) if length <= upper_threshold]
+    filtered_samples = [sample for sample, length in zip(samples, lengths)
+                        if upper_threshold >= length >= lower_threshold]
 
     return filtered_samples
 
@@ -28,7 +30,8 @@ sequences = []
 for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
 
-for delta_f in range(5, 21, 5):
+
+for delta_f in range(2, 9, 2):
 
     samples = []
 
@@ -39,7 +42,8 @@ for delta_f in range(5, 21, 5):
     stats['right'] = 0
 
     for s in sequences:
-        for t in range(0, s.lenght - delta_f, 3):
+        step = 6 if s.low_quality else 3
+        for t in range(0, s.lenght - delta_f, step):
             sample = s.get_sample(t, delta_f, 0)
             samples.append(sample)
 
@@ -54,17 +58,17 @@ for delta_f in range(5, 21, 5):
 
     for trajectory in stats['trajectory_list']:
         plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
-    plt.title(f'{delta_f}-frame long trajectories')
+    plt.title(f'{delta_f} seconds long trajectories')
     plt.axis('equal')
     plt.show()
 
-    print(f'{delta_f}-FRAME LONG TRAJECTORY')
+    print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
     print(f"Numero traitettorie rettilinee: {stats['straight']}")
     print(f"Numero curve a sinistra: {stats['left']}")
     print(f"Numero curve a destra: {stats['right']}")
-    print(f"Media lunghezza traiettorie: {np.mean(stats['trajectory_length'])}")
+    print(f"Media lunghezza traiettorie: {np.mean(stats['trajectory_length'])} m")
     print(f"Varianza lunghezza traiettorie: {np.var(stats['trajectory_length'])}")
     print(f"Media area coperta dalla point-cloud: {np.mean(stats['covered_area'])} %")
     print(f"Varianza area coperta dalla point-cloud: {np.var(stats['covered_area'])}")
-    print("______________________________________________________________________")
+    print("______________________________________________________________________\n")
