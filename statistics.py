@@ -5,6 +5,8 @@ from sequence import Sequence
 import numpy as np
 
 sample_step = 2
+num_bins = 7
+
 
 def remove_outliers(samples):
     # Calcola la lunghezza di ogni traiettoria
@@ -30,8 +32,6 @@ sequences = []
 
 for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
-
-sequences.append(Sequence("rosbags/rosbag2_2024_05_03-16_15_57"))
 
 for delta_f in range(2, 9, 2):
 
@@ -61,6 +61,13 @@ for delta_f in range(2, 9, 2):
         plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
     plt.title(f'{delta_f} seconds long trajectories')
     plt.axis('equal')
+    plt.show()
+
+    max_distances = [s.calculate_max_distance_from_origin() for s in samples]
+    plt.hist(max_distances, bins=num_bins, edgecolor='black')
+    plt.title('Istogramma delle Distanze Massime dalla Point Cloud all\'Origine')
+    plt.xlabel('Distanza Massima')
+    plt.ylabel('Frequenza')
     plt.show()
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')

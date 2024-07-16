@@ -211,6 +211,12 @@ class Sample:
 
         return covered_area_percentage
 
+    def calculate_max_distance_from_origin(self):
+        points = np.asarray(self.point_cloud.points)
+        distances = np.linalg.norm(points, axis=1)
+        max_distance = np.max(distances)
+        return max_distance
+
 
 class Trajectory:
     def __init__(self, points):
