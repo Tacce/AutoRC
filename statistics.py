@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 from sequence import Sequence
 import numpy as np
 
+sample_step = 2
 
 def remove_outliers(samples):
     # Calcola la lunghezza di ogni traiettoria
@@ -30,6 +31,7 @@ sequences = []
 for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
 
+sequences.append(Sequence("rosbags/rosbag2_2024_05_03-16_15_57"))
 
 for delta_f in range(2, 9, 2):
 
@@ -42,8 +44,7 @@ for delta_f in range(2, 9, 2):
     stats['right'] = 0
 
     for s in sequences:
-        step = 6 if s.low_quality else 3
-        for t in range(0, s.lenght - delta_f, step):
+        for t in range(0, int(s.lenght - delta_f), sample_step):
             sample = s.get_sample(t, delta_f, 0)
             samples.append(sample)
 

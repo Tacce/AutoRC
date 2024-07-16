@@ -56,18 +56,18 @@ class Sequence:
                     img = message_to_cvimage(msg, '32FC1')
                     self.depth_imgs.append(Image(timestamp, img))
 
-        self.lenght = len(self.trajectory_data)
+        self.lenght = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp'])/1000000000
 
         if 'ROTATED' in str(rosbag_path):
             self.is_rotated = True
         else:
             self.is_rotated = False
 
-        height, width = self.rgb_imgs[0].img.shape[:2]
+        '''height, width = self.rgb_imgs[0].img.shape[:2]
         if height > 200 and width > 400:
             self.low_quality = False
         else:
-            self.low_quality = True
+            self.low_quality = True'''
 
     def __create_point_cloud_from_depth(self, depth_image, rgb_image, intrinsic_matrix):
         height, width = depth_image.shape
@@ -108,6 +108,11 @@ class Sequence:
         return rotated_trajectory
 
     def get_sample(self, t, delta_f, delta_p):
+        target_time = self.trajectory_data[0]['timestamp'] + t * 1000000000
+        t = min(
+            (i for i in range(len(self.trajectory_data)) if self.trajectory_data[i]['timestamp'] - target_time >= 0),
+            key=lambda i: self.trajectory_data[i]['timestamp'] - target_time)
+
         main_frame = self.trajectory_data[t]
 
         delta_f *= 1000000000
