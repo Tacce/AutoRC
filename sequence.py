@@ -15,12 +15,6 @@ angle_threshold = np.pi / 16
 max_slope = 6
 
 
-class Image:
-    def __init__(self, timestamp, img):
-        self.timestamp = timestamp
-        self.img = img
-
-
 class Sequence:
     def __init__(self, rosbag_path):
 
@@ -50,20 +44,20 @@ class Sequence:
                 if connection.topic == '/zed/zed_node/right/image_rect_color':
                     msg = reader.deserialize(rawdata, connection.msgtype)
                     img = message_to_cvimage(msg, 'bgr8')
-                    self.rgb_imgs.append(Image(timestamp, img))
+                    self.rgb_imgs.append({'timestamp': timestamp, 'img': img})
                 if connection.topic == '/zed/zed_node/depth/depth_registered':
                     msg = reader.deserialize(rawdata, connection.msgtype)
                     img = message_to_cvimage(msg, '32FC1')
-                    self.depth_imgs.append(Image(timestamp, img))
+                    self.depth_imgs.append({'timestamp': timestamp, 'img': img})
 
-        self.lenght = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp'])/1000000000
+        self.lenght = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp']) / 1000000000
 
         if 'ROTATED' in str(rosbag_path):
             self.is_rotated = True
         else:
             self.is_rotated = False
 
-        '''height, width = self.rgb_imgs[0].img.shape[:2]
+        '''height, width = self.rgb_imgs[0]['img'].shape[:2]
         if height > 200 and width > 400:
             self.low_quality = False
         else:
@@ -124,12 +118,12 @@ class Sequence:
         rotation = R.from_quat(orientation).as_matrix()
         rotation = rotation @ alignment_rotation
 
-        closest_depth_frame = min(self.depth_imgs, key=lambda x: abs(x.timestamp - timestamp))
-        closest_rgb_frame = min(self.rgb_imgs, key=lambda x: abs(x.timestamp - timestamp))
+        closest_depth_frame = min(self.depth_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
+        closest_rgb_frame = min(self.rgb_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
 
-        closest_depth_frame.img = np.nan_to_num(closest_depth_frame.img, nan=0.0, posinf=0.0, neginf=0.0)
+        closest_depth_frame['img'] = np.nan_to_num(closest_depth_frame['img'], nan=0.0, posinf=0.0, neginf=0.0)
 
-        point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame.img, closest_rgb_frame.img,
+        point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame['img'], closest_rgb_frame['img'],
                                                            self.intrinsic_matrix)
 
         trajectory_points_future = np.array([data['position'] for data in self.trajectory_data[t:]
@@ -146,10 +140,63 @@ class Sequence:
             trajectory_points_past = trajectory_points_past @ rotation_matrix_180.T
             point_cloud.points = o3d.utility.Vector3dVector(np.asarray(point_cloud.points) @ rotation_matrix_180.T)
 
-        sample = Sample(point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame.img,
-                        closest_depth_frame.img)
+        sample = Sample(point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame['img'],
+                        closest_depth_frame['img'])
 
         return sample
+
+    def display_sequence(self):
+        transformed_point_clouds = []
+        first_position = np.array(self.trajectory_data[0]['position'])
+        first_orientation = self.trajectory_data[0]['orientation']
+        first_rotation = R.from_quat(first_orientation).as_matrix()
+        first_rotation = first_rotation @ alignment_rotation
+
+        for data in self.trajectory_data:
+            position = np.array(data['position'])
+            orientation = data['orientation']
+            timestamp = data['timestamp']
+            rotation = R.from_quat(orientation).as_matrix()
+            rotation = rotation @ alignment_rotation
+
+            # Trova il frame di profondità e RGB più vicino al timestamp corrente
+            closest_depth_frame = min(self.depth_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
+            closest_rgb_frame = min(self.rgb_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
+
+            closest_depth_frame['img'] = np.nan_to_num(closest_depth_frame['img'], nan=0.0, posinf=0.0, neginf=0.0)
+
+            # Crea la nuvola di punti
+            point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame['img'], closest_rgb_frame['img'],
+                                                               self.intrinsic_matrix)
+
+            # Trasforma la nuvola di punti
+            transformed_points = point_cloud.points @ rotation.T
+            transformed_points += position - first_position
+            transformed_points = transformed_points @ np.linalg.inv(first_rotation).T
+
+            if self.is_rotated:
+                transformed_points = transformed_points @ rotation_matrix_180.T
+
+            point_cloud.points = o3d.utility.Vector3dVector(transformed_points)
+
+            transformed_point_clouds.append(point_cloud)
+
+        # Crea la LineSet per la traiettoria
+        trajectory_points = np.array([data['position'] for data in self.trajectory_data]) - first_position
+        trajectory_points = trajectory_points @ np.linalg.inv(first_rotation).T
+
+        if self.is_rotated:
+            trajectory_points = trajectory_points @ rotation_matrix_180.T
+
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(trajectory_points)
+        lines = [[i, i + 1] for i in range(len(trajectory_points) - 1)]
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+
+        coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
+
+        # Visualizza le nuvole di punti trasformate e la traiettoria
+        o3d.visualization.draw_geometries(transformed_point_clouds + [line_set, coordinate_frame])
 
 
 class Sample:

@@ -65,9 +65,9 @@ for delta_f in range(2, 9, 2):
 
     max_distances = [s.calculate_max_distance_from_origin() for s in samples]
     plt.hist(max_distances, bins=num_bins, edgecolor='black')
-    plt.title('Istogramma delle Distanze Massime dalla Point Cloud all\'Origine')
-    plt.xlabel('Distanza Massima')
-    plt.ylabel('Frequenza')
+    plt.title('Histogram of the Maximum Distances from the Point Cloud to the Origin')
+    plt.xlabel('Maximum Distance')
+    plt.ylabel('Frequency')
     plt.show()
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
