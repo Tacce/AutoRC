@@ -13,6 +13,7 @@ rotation_matrix_180 = np.array([[-1, 0, 0],
 
 angle_threshold = np.pi / 16
 max_slope = 6
+max_velocity = 3
 
 
 class Sequence:
@@ -56,6 +57,10 @@ class Sequence:
             self.is_rotated = True
         else:
             self.is_rotated = False
+
+        num_frames = len(self.rgb_imgs)
+        total_time = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp']) / 1000000000
+        self.framerate = num_frames / total_time if total_time > 0 else 0
 
         '''height, width = self.rgb_imgs[0]['img'].shape[:2]
         if height > 200 and width > 400:
@@ -126,8 +131,14 @@ class Sequence:
         point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame['img'], closest_rgb_frame['img'],
                                                            self.intrinsic_matrix)
 
-        trajectory_points_future = np.array([data['position'] for data in self.trajectory_data[t:]
+        trajectory_points_future = np.array([data for data in self.trajectory_data[t:]
                                              if data['timestamp'] <= main_frame['timestamp'] + delta_f])
+
+        total_time = (trajectory_points_future[-1]['timestamp'] - trajectory_points_future[0]['timestamp']) / 1000000000
+        framerate = len(trajectory_points_future) / total_time if total_time > 0 else 0
+        # framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
+
+        trajectory_points_future = np.array([data['position'] for data in trajectory_points_future])
         trajectory_points_future = self.__transform_trajectory(trajectory_points_future, rotation)
 
         trajectory_points_past = np.array(
@@ -141,7 +152,7 @@ class Sequence:
             point_cloud.points = o3d.utility.Vector3dVector(np.asarray(point_cloud.points) @ rotation_matrix_180.T)
 
         sample = Sample(point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame['img'],
-                        closest_depth_frame['img'])
+                        closest_depth_frame['img'], framerate)
 
         return sample
 
@@ -201,12 +212,14 @@ class Sequence:
 
 class Sample:
 
-    def __init__(self, point_cloud, trajectory_points_future, trajectory_points_past, rgb_frame, depth_frame):
+    def __init__(self, point_cloud, trajectory_points_future, trajectory_points_past, rgb_frame, depth_frame,
+                 framerate):
         self.point_cloud = point_cloud
         self.future_trajectory = Trajectory(trajectory_points_future)
         self.past_trajectory = Trajectory(trajectory_points_past)
         self.rgb_frame = rgb_frame
         self.depth_frame = depth_frame
+        self.framerate = framerate
 
     def display(self):
         line_set_f = o3d.geometry.LineSet()
@@ -237,6 +250,9 @@ class Sample:
     def classify_trajectory(self):
         return self.future_trajectory.classify()
 
+    def calculate_trajectory_points_distances(self):
+        return self.future_trajectory.calculate_distances_between_points()
+
     def calculate_covered_area_percentage(self):
         height, width = self.rgb_frame.shape[:2]
         total_pixels = width * height
@@ -264,11 +280,21 @@ class Sample:
         max_distance = np.max(distances)
         return max_distance
 
+    def is_outlier(self):
+        upper_bound = max_velocity / self.framerate if self.framerate > 0 else 0
+        # upper_bound = 3
+        return np.any(self.future_trajectory.calculate_distances_between_points() > upper_bound)
+
 
 class Trajectory:
     def __init__(self, points):
         self.points = points
         self.length = np.sum(np.linalg.norm(self.points[1:] - self.points[:-1], axis=1))
+
+    def calculate_distances_between_points(self):
+        diffs = np.diff(self.points, axis=0)
+        distances = np.linalg.norm(diffs, axis=1)
+        return distances
 
     def classify(self):
         # Considero solo la traiettoria sul piano xz

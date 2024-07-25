@@ -5,10 +5,18 @@ from sequence import Sequence
 import numpy as np
 
 sample_step = 2
-num_bins = 7
+num_bins = 10
 
 
-def remove_outliers(samples):
+def plot_histogram(data, num_bins, title, xlabel):
+    plt.hist(data, bins=num_bins, edgecolor='black')
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel('Frequency')
+    plt.show()
+
+
+def remove_outliers_length(samples):
     # Calcola la lunghezza di ogni traiettoria
     lengths = np.array([sample.get_trajectory_length() for sample in samples])
 
@@ -18,13 +26,20 @@ def remove_outliers(samples):
     IQR = Q3 - Q1
 
     # Calcola la soglia superiore
-    upper_threshold = Q3 + 1.5 * IQR
-    lower_threshold = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    lower_bound = Q1 - 1.5 * IQR
 
     # Filtra i sample che hanno una traiettoria che supera la soglia superiore
     filtered_samples = [sample for sample, length in zip(samples, lengths)
-                        if upper_threshold >= length >= lower_threshold]
+                        if upper_bound >= length >= lower_bound]
 
+    return filtered_samples
+
+
+def remove_outliers_consecutive_distances(samples):
+    filtered_samples = [sample for sample in samples if not sample.is_outlier()]
+    print(len(filtered_samples))
+    print(len(samples))
     return filtered_samples
 
 
@@ -48,7 +63,8 @@ for delta_f in range(2, 9, 2):
             sample = s.get_sample(t, delta_f, 0)
             samples.append(sample)
 
-    samples = remove_outliers(samples)
+    # samples = remove_outliers_length(samples)
+    samples = remove_outliers_consecutive_distances(samples)
 
     for sample in samples:
         stats['trajectory_list'].append(sample.future_trajectory)
@@ -56,6 +72,8 @@ for delta_f in range(2, 9, 2):
         stats['n_examples'] += 1
         stats['trajectory_length'].append(sample.get_trajectory_length())
         stats['covered_area'].append(sample.calculate_covered_area_percentage())
+        stats['distances'].extend(sample.calculate_trajectory_points_distances())
+        stats['framerates'].append(sample.framerate)
 
     for trajectory in stats['trajectory_list']:
         plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
@@ -64,11 +82,17 @@ for delta_f in range(2, 9, 2):
     plt.show()
 
     max_distances = [s.calculate_max_distance_from_origin() for s in samples]
-    plt.hist(max_distances, bins=num_bins, edgecolor='black')
-    plt.title('Histogram of the Maximum Distances from the Point Cloud to the Origin')
-    plt.xlabel('Maximum Distance')
-    plt.ylabel('Frequency')
-    plt.show()
+    plot_histogram(max_distances, num_bins, 'Histogram of the Maximum Distances from the Point Cloud to the Origin',
+                   'Maximum Distance')
+
+    plot_histogram(stats['trajectory_length'], num_bins, 'Histogram of the Trajectory Lengths', 'Trajectory Length')
+
+    plot_histogram(stats['covered_area'], num_bins, 'Histogram of the Percentage of Area Covered by the Point Cloud',
+                   'Covered Area Percentage')
+
+    plot_histogram(stats['framerates'], num_bins, 'Histogram of the Framerates', 'Framerate')
+
+    plot_histogram(stats['distances'], 100, 'Distance Distribution', 'Distance')
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
@@ -77,6 +101,10 @@ for delta_f in range(2, 9, 2):
     print(f"Numero curve a destra: {stats['right']}")
     print(f"Media lunghezza traiettorie: {np.mean(stats['trajectory_length'])} m")
     print(f"Varianza lunghezza traiettorie: {np.var(stats['trajectory_length'])}")
+    print(f"Media framerate: {np.mean(stats['framerates'])}")
+    print(f"Varianza framerate: {np.var(stats['framerates'])}")
     print(f"Media area coperta dalla point-cloud: {np.mean(stats['covered_area'])} %")
     print(f"Varianza area coperta dalla point-cloud: {np.var(stats['covered_area'])}")
+    print(f"Media distanza punti: {np.mean(stats['distances'])}")
+    print(f"Varianza distanza punti: {np.var(stats['distances'])}")
     print("______________________________________________________________________\n")
