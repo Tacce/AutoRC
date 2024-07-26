@@ -38,8 +38,7 @@ def remove_outliers_length(samples):
 
 def remove_outliers_consecutive_distances(samples):
     filtered_samples = [sample for sample in samples if not sample.is_outlier()]
-    print(len(filtered_samples))
-    print(len(samples))
+    print(f"{len(samples) - len(filtered_samples)} outliers removed")
     return filtered_samples
 
 
@@ -59,6 +58,7 @@ for delta_f in range(2, 9, 2):
     stats['right'] = 0
 
     for s in sequences:
+        stats['start_angles'].append(s.calcuate_start_angle())
         for t in range(0, int(s.lenght - delta_f), sample_step):
             sample = s.get_sample(t, delta_f, 0)
             samples.append(sample)
@@ -74,6 +74,11 @@ for delta_f in range(2, 9, 2):
         stats['covered_area'].append(sample.calculate_covered_area_percentage())
         stats['distances'].extend(sample.calculate_trajectory_points_distances())
         stats['framerates'].append(sample.framerate)
+
+        curve = sample.calculate_curve_angle()
+        print()
+        if curve is not None:
+            stats['curve_angles'].append(curve)
 
     for trajectory in stats['trajectory_list']:
         plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
@@ -94,6 +99,10 @@ for delta_f in range(2, 9, 2):
 
     plot_histogram(stats['distances'], 100, 'Distance Distribution', 'Distance')
 
+    plot_histogram(stats['start_angles'], 20, 'Start Angles', 'Start Angles')
+
+    plot_histogram(stats['curve_angles'], 100, 'Curve Angles Distribution', 'Curve Angles')
+
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
     print(f"Numero traitettorie rettilinee: {stats['straight']}")
@@ -107,4 +116,8 @@ for delta_f in range(2, 9, 2):
     print(f"Varianza area coperta dalla point-cloud: {np.var(stats['covered_area'])}")
     print(f"Media distanza punti: {np.mean(stats['distances'])}")
     print(f"Varianza distanza punti: {np.var(stats['distances'])}")
+    print(f"Media angolo d'attacco: {np.mean(stats['start_angles'])}°")
+    print(f"Varianza angolo d'attacco: {np.var(stats['start_angles'])}")
+    print(f"Media angolo di curva: {np.mean(stats['curve_angles'])}°")
+    print(f"Varianza angolo di curva: {np.var(stats['curve_angles'])}")
     print("______________________________________________________________________\n")

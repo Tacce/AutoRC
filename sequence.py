@@ -209,6 +209,17 @@ class Sequence:
         # Visualizza le nuvole di punti trasformate e la traiettoria
         o3d.visualization.draw_geometries(transformed_point_clouds + [line_set, coordinate_frame])
 
+    def calcuate_start_angle(self):
+        orientation = self.trajectory_data[0]['orientation']
+        rotation = R.from_quat(orientation).as_matrix() @ alignment_rotation
+
+        points = np.array([data['position'] for data in self.trajectory_data])
+        points = self.__transform_trajectory(points, rotation)[:, [0, 2]]
+        slope = (points[1, 1] - points[0, 1]) / (points[1, 0] - points[0, 0]) \
+            if points[1, 0] != points[0, 0] else np.inf
+        angle = np.degrees(np.arctan(slope))
+        return (angle + 180) % 180
+
 
 class Sample:
 
@@ -285,6 +296,9 @@ class Sample:
         # upper_bound = 3
         return np.any(self.future_trajectory.calculate_distances_between_points() > upper_bound)
 
+    def calculate_curve_angle(self):
+        return self.future_trajectory.calculate_curve_angle()
+
 
 class Trajectory:
     def __init__(self, points):
@@ -295,6 +309,25 @@ class Trajectory:
         diffs = np.diff(self.points, axis=0)
         distances = np.linalg.norm(diffs, axis=1)
         return distances
+
+    def calculate_curve_angle(self):
+        if len(self.points) < 2:
+            return None
+        points = self.points[:, [0, 2]]
+
+        slope = (points[1, 1] - points[0, 1]) / (points[1, 0] - points[0, 0]) \
+            if points[1, 0] != points[0, 0] else np.inf
+
+        if abs(slope) < 6:
+            return None
+
+        start_angle = np.degrees(np.arctan(slope))
+
+        slope = (points[-1, 1] - points[-2, 1]) / (points[-1, 0] - points[-2, 0]) \
+            if points[-1, 0] != points[-2, 0] else np.inf
+        final_angle = np.degrees(np.arctan(slope))
+
+        return final_angle - start_angle
 
     def classify(self):
         # Considero solo la traiettoria sul piano xz
