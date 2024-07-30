@@ -215,10 +215,9 @@ class Sequence:
 
         points = np.array([data['position'] for data in self.trajectory_data])
         points = self.__transform_trajectory(points, rotation)[:, [0, 2]]
-        slope = (points[1, 1] - points[0, 1]) / (points[1, 0] - points[0, 0]) \
-            if points[1, 0] != points[0, 0] else np.inf
-        angle = np.degrees(np.arctan(slope))
-        return (angle + 180) % 180
+        slope = (points[1, 0] - points[0, 0]) / (points[1, 1] - points[0, 1]) \
+            if points[1, 1] != points[0, 1] else np.inf
+        return np.degrees(np.arctan(slope))
 
 
 class Sample:
@@ -315,16 +314,16 @@ class Trajectory:
             return None
         points = self.points[:, [0, 2]]
 
-        slope = (points[1, 1] - points[0, 1]) / (points[1, 0] - points[0, 0]) \
-            if points[1, 0] != points[0, 0] else np.inf
+        slope = (points[1, 0] - points[0, 0]) / (points[1, 1] - points[0, 1]) \
+            if points[1, 1] != points[0, 1] else np.inf
 
-        if abs(slope) < 6:
+        if abs(slope) > 1/6:
             return None
 
         start_angle = np.degrees(np.arctan(slope))
 
-        slope = (points[-1, 1] - points[-2, 1]) / (points[-1, 0] - points[-2, 0]) \
-            if points[-1, 0] != points[-2, 0] else np.inf
+        slope = (points[-1, 0] - points[-2, 0]) / (points[-1, 1] - points[-2, 1]) \
+            if points[-1, 1] != points[-2, 1] else np.inf
         final_angle = np.degrees(np.arctan(slope))
 
         return final_angle - start_angle

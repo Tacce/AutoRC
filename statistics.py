@@ -76,7 +76,6 @@ for delta_f in range(2, 9, 2):
         stats['framerates'].append(sample.framerate)
 
         curve = sample.calculate_curve_angle()
-        print()
         if curve is not None:
             stats['curve_angles'].append(curve)
 
@@ -101,7 +100,7 @@ for delta_f in range(2, 9, 2):
 
     plot_histogram(stats['start_angles'], 20, 'Start Angles', 'Start Angles')
 
-    plot_histogram(stats['curve_angles'], 100, 'Curve Angles Distribution', 'Curve Angles')
+    plot_histogram(stats['curve_angles'], 50, 'Curve Angles Distribution', 'Curve Angles')
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
