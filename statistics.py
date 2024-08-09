@@ -6,6 +6,8 @@ import numpy as np
 
 sample_step = 2
 num_bins = 10
+framerate = 10
+max_velocity = 2.8
 
 
 def plot_histogram(data, num_bins, title, xlabel):
@@ -48,6 +50,7 @@ for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
 
 for delta_f in range(2, 9, 2):
+    delta_p = 2
 
     samples = []
 
@@ -59,25 +62,23 @@ for delta_f in range(2, 9, 2):
 
     for s in sequences:
         stats['start_angles'].append(s.calcuate_start_angle())
-        for t in range(0, int(s.lenght - delta_f), sample_step):
-            sample = s.get_sample(t, delta_f, 0)
-            samples.append(sample)
+        stats['time_length'].append(s.lenght)
+        stats['num_frames'].append(s.num_frames)
+        for t in range(s.num_frames):
+            sample = s.get_sample(t, delta_f, delta_p, framerate, max_velocity)
+            if sample is not None:
+                samples.append(sample)
+                stats['trajectory_list'].append(sample.future_trajectory)
+                stats[sample.classify_trajectory()] += 1
+                stats['n_examples'] += 1
+                stats['trajectory_length'].append(sample.get_trajectory_length())
+                stats['covered_area'].append(sample.calculate_covered_area_percentage())
+                stats['distances'].extend(sample.calculate_trajectory_points_distances())
+                stats['framerates'].append(sample.original_framerate)
 
-    # samples = remove_outliers_length(samples)
-    samples = remove_outliers_consecutive_distances(samples)
-
-    for sample in samples:
-        stats['trajectory_list'].append(sample.future_trajectory)
-        stats[sample.classify_trajectory()] += 1
-        stats['n_examples'] += 1
-        stats['trajectory_length'].append(sample.get_trajectory_length())
-        stats['covered_area'].append(sample.calculate_covered_area_percentage())
-        stats['distances'].extend(sample.calculate_trajectory_points_distances())
-        stats['framerates'].append(sample.framerate)
-
-        curve = sample.calculate_curve_angle()
-        if curve is not None:
-            stats['curve_angles'].append(curve)
+                curve = sample.calculate_curve_angle()
+                if curve is not None:
+                    stats['curve_angles'].append(curve)
 
     for trajectory in stats['trajectory_list']:
         plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
@@ -94,7 +95,7 @@ for delta_f in range(2, 9, 2):
     plot_histogram(stats['covered_area'], num_bins, 'Histogram of the Percentage of Area Covered by the Point Cloud',
                    'Covered Area Percentage')
 
-    plot_histogram(stats['framerates'], num_bins, 'Histogram of the Framerates', 'Framerate')
+    plot_histogram(stats['framerates'], num_bins, 'Histogram of the Original Framerates', 'Framerate')
 
     plot_histogram(stats['distances'], 100, 'Distance Distribution', 'Distance')
 
@@ -104,6 +105,8 @@ for delta_f in range(2, 9, 2):
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
+    print(f"Lunghezza media sequenze: {np.mean(stats['time_length'])} s")
+    print(f"Numero medio frame: {np.mean(stats['num_frames'])}")
     print(f"Numero traitettorie rettilinee: {stats['straight']}")
     print(f"Numero curve a sinistra: {stats['left']}")
     print(f"Numero curve a destra: {stats['right']}")

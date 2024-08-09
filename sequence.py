@@ -4,6 +4,7 @@ import numpy as np
 from rosbags.highlevel import AnyReader
 from scipy.spatial.transform import Rotation as R
 from rosbags.image import message_to_cvimage
+from scipy.interpolate import interp1d
 
 alignment_rotation = R.from_euler('xyz', [np.pi / 2, np.pi, np.pi / 2], degrees=False).as_matrix()
 
@@ -13,7 +14,6 @@ rotation_matrix_180 = np.array([[-1, 0, 0],
 
 angle_threshold = np.pi / 16
 max_slope = 6
-max_velocity = 3
 
 
 class Sequence:
@@ -58,9 +58,9 @@ class Sequence:
         else:
             self.is_rotated = False
 
-        num_frames = len(self.rgb_imgs)
+        self.num_frames = len(self.trajectory_data)
         total_time = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp']) / 1000000000
-        self.framerate = num_frames / total_time if total_time > 0 else 0
+        self.framerate = self.num_frames / total_time if total_time > 0 else 0
 
         '''height, width = self.rgb_imgs[0]['img'].shape[:2]
         if height > 200 and width > 400:
@@ -106,11 +106,32 @@ class Sequence:
 
         return rotated_trajectory
 
-    def get_sample(self, t, delta_f, delta_p):
+    def __interpolate_trajectory(self, trajectory, points_needed):
+        original_indices = np.linspace(0, len(trajectory) - 1, len(trajectory))
+        new_indices = np.linspace(0, len(trajectory) - 1, points_needed)
+
+        if len(trajectory) >= 15:
+            interpolation_kind = 'cubic'
+        elif len(trajectory) >= 7:
+            interpolation_kind = 'quadratic'
+        else:
+            interpolation_kind = 'linear'
+
+        # Interpolazione lineare dei punti
+        interpolated_points = np.zeros((points_needed, 3))  # matrice per contenere le nuove posizioni interpolate
+        for i in range(3):  # Per ciascuna dimensione x, y, z
+            interpolator = interp1d(original_indices, trajectory[:, i], kind=interpolation_kind)
+            interpolated_points[:, i] = interpolator(new_indices)
+
+        return interpolated_points
+
+    def get_sample(self, t, delta_f, delta_p, framerate, max_velocity):
+        """
         target_time = self.trajectory_data[0]['timestamp'] + t * 1000000000
         t = min(
             (i for i in range(len(self.trajectory_data)) if self.trajectory_data[i]['timestamp'] - target_time >= 0),
             key=lambda i: self.trajectory_data[i]['timestamp'] - target_time)
+        """
 
         main_frame = self.trajectory_data[t]
 
@@ -119,6 +140,10 @@ class Sequence:
 
         orientation = main_frame['orientation']
         timestamp = main_frame['timestamp']
+
+        if (timestamp > (self.trajectory_data[-1]['timestamp'] - delta_f) or
+                timestamp < (self.trajectory_data[0]['timestamp'] + delta_p)):
+            return None
 
         rotation = R.from_quat(orientation).as_matrix()
         rotation = rotation @ alignment_rotation
@@ -133,12 +158,26 @@ class Sequence:
 
         trajectory_points_future = np.array([data for data in self.trajectory_data[t:]
                                              if data['timestamp'] <= main_frame['timestamp'] + delta_f])
+        if len(trajectory_points_future) < 2:
+            return None
 
         total_time = (trajectory_points_future[-1]['timestamp'] - trajectory_points_future[0]['timestamp']) / 1000000000
-        framerate = len(trajectory_points_future) / total_time if total_time > 0 else 0
-        # framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
+        original_framerate = len(trajectory_points_future) / total_time if total_time > 0 else 0
+        # original_framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
 
         trajectory_points_future = np.array([data['position'] for data in trajectory_points_future])
+
+        # Controlla se il sample è outlier
+        upper_bound = max_velocity / original_framerate if original_framerate > 0 else 0
+        if np.any(np.linalg.norm(np.diff(trajectory_points_future, axis=0), axis=1) > upper_bound):
+            return None
+
+        if original_framerate < framerate:
+            trajectory_points_future = self.__interpolate_trajectory(trajectory_points_future,
+                                                                     int(framerate * total_time))
+        else:
+            framerate = original_framerate
+
         trajectory_points_future = self.__transform_trajectory(trajectory_points_future, rotation)
 
         trajectory_points_past = np.array(
@@ -152,7 +191,7 @@ class Sequence:
             point_cloud.points = o3d.utility.Vector3dVector(np.asarray(point_cloud.points) @ rotation_matrix_180.T)
 
         sample = Sample(point_cloud, trajectory_points_future, trajectory_points_past, closest_rgb_frame['img'],
-                        closest_depth_frame['img'], framerate)
+                        closest_depth_frame['img'], original_framerate, framerate)
 
         return sample
 
@@ -223,12 +262,13 @@ class Sequence:
 class Sample:
 
     def __init__(self, point_cloud, trajectory_points_future, trajectory_points_past, rgb_frame, depth_frame,
-                 framerate):
+                 original_framerate, framerate):
         self.point_cloud = point_cloud
         self.future_trajectory = Trajectory(trajectory_points_future)
         self.past_trajectory = Trajectory(trajectory_points_past)
         self.rgb_frame = rgb_frame
         self.depth_frame = depth_frame
+        self.original_framerate = original_framerate
         self.framerate = framerate
 
     def display(self):
@@ -289,11 +329,6 @@ class Sample:
         distances = np.linalg.norm(points, axis=1)
         max_distance = np.max(distances)
         return max_distance
-
-    def is_outlier(self):
-        upper_bound = max_velocity / self.framerate if self.framerate > 0 else 0
-        # upper_bound = 3
-        return np.any(self.future_trajectory.calculate_distances_between_points() > upper_bound)
 
     def calculate_curve_angle(self):
         return self.future_trajectory.calculate_curve_angle()

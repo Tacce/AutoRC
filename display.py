@@ -14,19 +14,20 @@ delta_p = 0
 s = Sequence(rosbag_path)
 print(s.calcuate_start_angle())
 s.display_sequence()
-sample = s.get_sample(min(t, s.lenght), delta_f, delta_p)
 
-print(s.lenght)
-print(sample.calculate_max_distance_from_origin())
-print(sample.classify_trajectory())
-print(sample.get_trajectory_length())
-print(sample.framerate)
-print(sample.calculate_curve_angle())
+sample = s.get_sample(min(t, s.num_frames - 1), delta_f, delta_p, 1, 3)
+if sample is not None:
+    print(s.lenght)
+    print(sample.calculate_max_distance_from_origin())
+    print(sample.classify_trajectory())
+    print(sample.get_trajectory_length())
+    print(sample.framerate)
+    print(sample.calculate_curve_angle())
+    print(len(sample.future_trajectory.points))
 
-'''frame = np.rot90(sample.rgb_frame, 2) if s.is_rotated else sample.rgb_frame
-plt.imshow(frame)
-plt.axis('off')
-plt.show()'''
+    '''frame = np.rot90(sample.rgb_frame, 2) if s.is_rotated else sample.rgb_frame
+    plt.imshow(frame)
+    plt.axis('off')
+    plt.show()'''
 
-sample.display()
-
+    sample.display()
