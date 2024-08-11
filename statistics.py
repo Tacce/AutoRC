@@ -60,10 +60,21 @@ for delta_f in range(2, 9, 2):
     stats['left'] = 0
     stats['right'] = 0
 
+    stats['better_quality_sequences'] = 0
+    stats['low_quality_sequences'] = 0
+
     for s in sequences:
         stats['start_angles'].append(s.calcuate_start_angle())
         stats['time_length'].append(s.lenght)
         stats['num_frames'].append(s.num_frames)
+
+        if s.low_quality:
+            stats['low_quality_lenght'].append(s.lenght)
+            stats['low_quality_sequences'] += 1
+        else:
+            stats['better_quality_lenght'].append(s.lenght)
+            stats['better_quality_sequences'] += 1
+
         for t in range(s.num_frames):
             sample = s.get_sample(t, delta_f, delta_p, framerate, max_velocity)
             if sample is not None:
@@ -105,7 +116,12 @@ for delta_f in range(2, 9, 2):
 
     print(f'{delta_f} SECONDS LONG TRAJECTORIES')
     print(f"Numero esempi: {stats['n_examples']}")
+    print(f"Numero sequenze a bassa qualità: {stats['low_quality_sequences']}")
+    print(f"Numero sequenze a qualità superiore: {stats['better_quality_sequences']}")
+    print(f"Lunghezza totale sequenze: {np.sum(stats['time_length'])} s")
     print(f"Lunghezza media sequenze: {np.mean(stats['time_length'])} s")
+    print(f"Lunghezza totale clip a bassa qualità : {np.sum(stats['low_quality_lenght'])} s")
+    print(f"Lunghezza totale clip a qualità superiore: {np.sum(stats['better_quality_lenght'])} s")
     print(f"Numero medio frame: {np.mean(stats['num_frames'])}")
     print(f"Numero traitettorie rettilinee: {stats['straight']}")
     print(f"Numero curve a sinistra: {stats['left']}")

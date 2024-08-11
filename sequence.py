@@ -62,11 +62,11 @@ class Sequence:
         total_time = (self.trajectory_data[-1]['timestamp'] - self.trajectory_data[0]['timestamp']) / 1000000000
         self.framerate = self.num_frames / total_time if total_time > 0 else 0
 
-        '''height, width = self.rgb_imgs[0]['img'].shape[:2]
+        height, width = self.rgb_imgs[0]['img'].shape[:2]
         if height > 200 and width > 400:
             self.low_quality = False
         else:
-            self.low_quality = True'''
+            self.low_quality = True
 
     def __create_point_cloud_from_depth(self, depth_image, rgb_image, intrinsic_matrix):
         height, width = depth_image.shape
