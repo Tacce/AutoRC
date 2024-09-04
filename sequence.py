@@ -109,9 +109,8 @@ class Sequence:
     def __generate_point(self, last_point, next_point, timestamp):
         last_pos, last_time = last_point['position'], last_point['timestamp']
         next_pos, next_time = next_point['position'], next_point['timestamp']
-        t = (timestamp - last_time) / (next_time - last_time)
-
-        return tuple(last_coord + t * (next_coord - last_coord) for last_coord, next_coord in zip(last_pos, next_pos))
+        k = (timestamp - last_time) / (next_time - last_time)
+        return tuple(last_coord + k * (next_coord - last_coord) for last_coord, next_coord in zip(last_pos, next_pos))
 
     def __interpolate_trajectory(self, trajectory, points_needed):
         original_indices = np.linspace(0, len(trajectory) - 1, len(trajectory))
