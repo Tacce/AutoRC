@@ -3,12 +3,14 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 from sequence import Sequence
 import numpy as np
-import os
 
 sample_step = 2
 num_bins = 10
 framerate = 10
 max_velocity = 2.8
+plot_step = 1
+
+delta_p = 2
 
 
 def plot_histogram(data, num_bins, title, xlabel, save_path):
@@ -20,13 +22,13 @@ def plot_histogram(data, num_bins, title, xlabel, save_path):
     plt.show()
     plt.close()
 
+
 sequences = []
 
 for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
 
-for delta_f in range(2, 9, 2):
-    delta_p = 2
+for delta_f in range(6, 9, 2):
 
     samples = []
 
@@ -70,8 +72,8 @@ for delta_f in range(2, 9, 2):
     output_dir = Path(f"dataset_delta_f_{delta_f}")
     output_dir.mkdir(exist_ok=True)
 
-    for trajectory in stats['trajectory_list']:
-        plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0])
+    for trajectory in stats['trajectory_list'][::plot_step]:
+        plt.plot(trajectory.points[:, 2], -trajectory.points[:, 0], 'o')
     plt.title(f'{delta_f} seconds long trajectories')
     plt.axis('equal')
     plt.savefig(output_dir / f'{delta_f}_seconds_long_trajectories.png')
@@ -150,5 +152,3 @@ for delta_f in range(2, 9, 2):
         print(f"Varianza angolo di curva: {np.var(stats['curve_angles'])}")
         f.write(f"Varianza angolo di curva: {np.var(stats['curve_angles'])}\n")
         print("______________________________________________________________________\n")
-        f.write("______________________________________________________________________\n")
-

@@ -106,33 +106,26 @@ class Sequence:
 
         return rotated_trajectory
 
+    def __generate_point(self, last_point, next_point, timestamp):
+        last_pos, last_time = last_point['position'], last_point['timestamp']
+        next_pos, next_time = next_point['position'], next_point['timestamp']
+        t = (timestamp - last_time) / (next_time - last_time)
+
+        return tuple(last_coord + t * (next_coord - last_coord) for last_coord, next_coord in zip(last_pos, next_pos))
+
     def __interpolate_trajectory(self, trajectory, points_needed):
         original_indices = np.linspace(0, len(trajectory) - 1, len(trajectory))
         new_indices = np.linspace(0, len(trajectory) - 1, points_needed)
 
-        if len(trajectory) >= 15:
-            interpolation_kind = 'cubic'
-        elif len(trajectory) >= 7:
-            interpolation_kind = 'quadratic'
-        else:
-            interpolation_kind = 'linear'
-
         # Interpolazione lineare dei punti
         interpolated_points = np.zeros((points_needed, 3))  # matrice per contenere le nuove posizioni interpolate
         for i in range(3):  # Per ciascuna dimensione x, y, z
-            interpolator = interp1d(original_indices, trajectory[:, i], kind=interpolation_kind)
+            interpolator = interp1d(original_indices, trajectory[:, i], kind='quadratic')
             interpolated_points[:, i] = interpolator(new_indices)
 
         return interpolated_points
 
     def get_sample(self, t, delta_f, delta_p, framerate, max_velocity):
-        """
-        target_time = self.trajectory_data[0]['timestamp'] + t * 1000000000
-        t = min(
-            (i for i in range(len(self.trajectory_data)) if self.trajectory_data[i]['timestamp'] - target_time >= 0),
-            key=lambda i: self.trajectory_data[i]['timestamp'] - target_time)
-        """
-
         main_frame = self.trajectory_data[t]
 
         delta_f *= 1000000000
@@ -145,8 +138,7 @@ class Sequence:
                 timestamp < (self.trajectory_data[0]['timestamp'] + delta_p)):
             return None
 
-        rotation = R.from_quat(orientation).as_matrix()
-        rotation = rotation @ alignment_rotation
+        rotation = R.from_quat(orientation).as_matrix() @ alignment_rotation
 
         closest_depth_frame = min(self.depth_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
         closest_rgb_frame = min(self.rgb_imgs, key=lambda x: abs(x['timestamp'] - timestamp))
@@ -156,14 +148,25 @@ class Sequence:
         point_cloud = self.__create_point_cloud_from_depth(closest_depth_frame['img'], closest_rgb_frame['img'],
                                                            self.intrinsic_matrix)
 
-        trajectory_points_future = np.array([data for data in self.trajectory_data[t:]
-                                             if data['timestamp'] <= main_frame['timestamp'] + delta_f])
-        if len(trajectory_points_future) < 2:
+        target_timestamp_f = timestamp + delta_f
+        trajectory_points_future = []
+        for i, data in enumerate(self.trajectory_data[t:], start=t):
+            if data['timestamp'] > target_timestamp_f:
+                if i > t:  # Se c'è un punto successivo
+                    last_point = self.trajectory_data[i - 1]
+                    next_point = data
+                    interpolated_position = self.__generate_point(last_point, next_point, target_timestamp_f)
+                    trajectory_points_future.append(
+                        {'timestamp': target_timestamp_f, 'position': interpolated_position})
+                else:
+                    return None
+                break
+            trajectory_points_future.append(data)
+
+        if len(trajectory_points_future) < 3:
             return None
 
-        total_time = (trajectory_points_future[-1]['timestamp'] - trajectory_points_future[0]['timestamp']) / 1000000000
-        original_framerate = len(trajectory_points_future) / total_time if total_time > 0 else 0
-        # original_framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
+        original_framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
 
         trajectory_points_future = np.array([data['position'] for data in trajectory_points_future])
 
@@ -174,15 +177,38 @@ class Sequence:
 
         if original_framerate < framerate:
             trajectory_points_future = self.__interpolate_trajectory(trajectory_points_future,
-                                                                     int(framerate * total_time))
+                                                                     int(framerate * delta_f / 1000000000))
         else:
             framerate = original_framerate
 
         trajectory_points_future = self.__transform_trajectory(trajectory_points_future, rotation)
 
-        trajectory_points_past = np.array(
-            [data['position'] for data in self.trajectory_data[0: t + 1]
-             if data['timestamp'] >= main_frame['timestamp'] - delta_p])[::-1]
+        target_timestamp_p = timestamp - delta_p
+        trajectory_points_past = []
+        for i in range(t, -1, -1):
+            data = self.trajectory_data[i]
+            if data['timestamp'] < target_timestamp_p:
+                if i < t:  # Se c'è un punto precedente
+                    last_point = self.trajectory_data[i + 1]
+                    next_point = data
+                    interpolated_position = self.__generate_point(last_point, next_point, target_timestamp_p)
+                    trajectory_points_past.append(
+                        {'timestamp': target_timestamp_p, 'position': interpolated_position})
+                else:
+                    return None
+                break
+            trajectory_points_past.append(data)
+
+        if len(trajectory_points_past) < 3:
+            return None
+
+        trajectory_points_past = np.array([data['position'] for data in trajectory_points_past])
+
+        past_framerate = len(trajectory_points_past) / delta_p if delta_p > 0 else 0
+        if past_framerate < framerate:
+            trajectory_points_past = self.__interpolate_trajectory(trajectory_points_past,
+                                                                   int(framerate * delta_p / 1000000000))
+
         trajectory_points_past = self.__transform_trajectory(trajectory_points_past, rotation)
 
         if self.is_rotated:
@@ -291,7 +317,6 @@ class Sample:
         # coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=trajectory_points[0])
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
 
-        # Visualizza le nuvole di punti trasformate e la traiettoria
         o3d.visualization.draw_geometries([self.point_cloud] + [line_set_f] + [line_set_p] + [coordinate_frame])
 
     def get_trajectory_length(self):
@@ -352,7 +377,7 @@ class Trajectory:
         slope = (points[1, 0] - points[0, 0]) / (points[1, 1] - points[0, 1]) \
             if points[1, 1] != points[0, 1] else np.inf
 
-        if abs(slope) > 1/6:
+        if abs(slope) > 1 / 6:
             return None
 
         start_angle = np.degrees(np.arctan(slope))

@@ -30,6 +30,4 @@ for i, sample in enumerate(samples):
              future_trajectory=sample.future_trajectory.points,
              past_trajectory=sample.past_trajectory.points,
              rgb_frame=sample.rgb_frame,
-             depth_frame=sample.depth_frame,
-             framerate=sample.framerate,
-             original_frame=sample.original_framerate,)
+             depth_frame=sample.depth_frame,)
