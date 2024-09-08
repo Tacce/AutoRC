@@ -4,13 +4,17 @@ from matplotlib import pyplot as plt
 from sequence import Sequence
 import numpy as np
 
-sample_step = 2
-num_bins = 10
+
+# Framerate imposto (il numero di punti della traiettoria risulta essere framerate * delta_f)
 framerate = 10
+# Velocità massima consentita al veicolo per considerare il campione valido
 max_velocity = 2.8
-plot_step = 1
+# Parametro che indica ogni quanti campioni plottare la traiettoria (per evitare confusione)
+plot_step = 10
 
 delta_p = 2
+# Numero standard per colonne degli istogrammi
+num_bins = 10
 
 
 def plot_histogram(data, num_bins, title, xlabel, save_path):
@@ -28,7 +32,7 @@ sequences = []
 for rosbag_path in list(Path('rosbags').iterdir()):
     sequences.append(Sequence(rosbag_path))
 
-for delta_f in range(6, 9, 2):
+for delta_f in range(2, 9, 2):
 
     samples = []
 
