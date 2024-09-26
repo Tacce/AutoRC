@@ -165,7 +165,7 @@ class Sequence:
         if len(trajectory_points_future) < 3:
             return None
 
-        original_framerate = len(trajectory_points_future) / delta_f if delta_f > 0 else 0
+        original_framerate = len(trajectory_points_future) / delta_f * 1000000000 if delta_f > 0 else 0
 
         trajectory_points_future = np.array([data['position'] for data in trajectory_points_future])
 
